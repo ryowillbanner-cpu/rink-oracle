@@ -1,6 +1,16 @@
+import { configFromEnv, handleLineWebhook } from "./src/line_webhook.ts";
+
 const ALLOWED_ORIGIN = "*";
+const lineConfig = configFromEnv();
 
 Deno.serve(async (req) => {
+  // LINE公式アカウントの Webhook（メッセージの自動仕分け）
+  if (new URL(req.url).pathname === "/line/webhook") {
+    if (req.method !== "POST") return new Response("OK"); // 疎通確認用
+    return await handleLineWebhook(req, lineConfig);
+  }
+
+  // それ以外は従来どおり Claude API の中継
   if (req.method === "OPTIONS") {
     return new Response(null, {
       headers: {
