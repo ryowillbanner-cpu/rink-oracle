@@ -7,7 +7,7 @@
 
 ```
 LINE ──Webhook──▶ /line/webhook（このサーバー）
-                      ├─ そのまま ぽちこ に転送（予約機能はこれまでどおり動く）
+                      ├─ （ぽちこが拡張機能なら、ぽちこは別の経路で動くので転送不要）
                       └─ 仕分け
                            ├─ 予約（ぽちこ）→ 通知しない
                            ├─ その他（スタンプ・「ありがとう」など）→ 通知しない
@@ -26,12 +26,15 @@ LINE ──Webhook──▶ /line/webhook（このサーバー）
 
 ### セットアップ
 
-#### 1. 今のWebhook URLを控える
+#### 1. ぽちこの入り方を確認する
 
-[LINE Developers](https://developers.line.biz/console/) →（チャネル）→「Messaging API設定」→「Webhook URL」を見てください。
+LINE Official Account Manager の「拡張機能」タブに **かんたん予約アプリ『ポチコ』** がある場合（このアカウントはこちら）、
+ぽちこは拡張機能として別の経路でメッセージを受け取っています。**`POCHICO_WEBHOOK_URL` は設定しません。**
 
-- **ぽちこのURLが入っている場合**：そのURLを控えて、`POCHICO_WEBHOOK_URL` に設定します（とても大事です。設定しないとぽちこが動かなくなります）。
-- **空欄の場合**：`POCHICO_WEBHOOK_URL` は設定しなくて大丈夫です。
+この場合は「設定」→「Messaging API」を「利用中」にして、Webhook URL にこのサーバーを登録します。
+⚠️ Messaging API は一度有効にすると「未利用」に戻せません。有効にする前に、ぽちこの予約機能に影響がないかをぽちこのサポートに確認してください。
+
+ぽちこが Messaging API の Webhook を使っている場合だけ、今の Webhook URL を `POCHICO_WEBHOOK_URL` に設定します（このサーバーから転送します）。
 
 #### 2. 環境変数を設定してデプロイ（Deno Deploy など）
 
@@ -39,7 +42,7 @@ LINE ──Webhook──▶ /line/webhook（このサーバー）
 |---|---|---|
 | `LINE_CHANNEL_SECRET` | ✅ | 「チャネル基本設定」のチャネルシークレット |
 | `LINE_CHANNEL_ACCESS_TOKEN` | おすすめ | 「Messaging API設定」のチャネルアクセストークン（長期）。通知にお客様の表示名を出すため、またLINE通知に使います |
-| `POCHICO_WEBHOOK_URL` | 条件付き | 手順1で控えたぽちこのWebhook URL |
+| `POCHICO_WEBHOOK_URL` | 条件付き | ぽちこがWebhookを使っている場合だけ（拡張機能なら不要） |
 | `NOTIFY_WEBHOOK_URL` | 任意 | Slack または Discord にも通知したい場合（こちらはその都度すぐ通知） |
 | `STAFF_REGISTER_CODE` | LINE通知に必要 | 担当者登録の合言葉（下の「担当者のLINEに1日1回まとめて通知する」を参照） |
 | `DIGEST_CRON` | 任意 | まとめ通知を送る時刻（UTCのcron式。デフォルト `0 0 * * *` = 日本時間9:00） |
