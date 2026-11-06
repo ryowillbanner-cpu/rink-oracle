@@ -18,6 +18,17 @@ Deno.test("classify: pattern / type / fallback", async () => {
   assertEquals((await classify({ type: "text", text: "【予約リクエスト】11/20 14:00" }, opts)).category, "reservation");
   assertEquals((await classify({ type: "text", text: "ぽちこで予約しました" }, opts)).category, "reservation");
   assertEquals((await classify({ type: "text", text: "恋愛の相談をしたいです" }, opts)).category, "inquiry");
+  for (const t of [
+    "予約したいものを選択してください☟",
+    "現在予約はありません。",
+    "ご指定いただいた時間は、既に満席となっております。別の時間帯をご指定ください。",
+    "予約する",
+    " 予約確認 ",
+  ]) {
+    assertEquals((await classify({ type: "text", text: t }, opts)).category, "reservation", t);
+  }
+  // キーワードの後に文章があれば人が見るべき問い合わせ
+  assertEquals((await classify({ type: "text", text: "予約したいのですが空きはありますか？" }, opts)).category, "inquiry");
   assertEquals((await classify({ type: "sticker" }, opts)).category, "other");
   assertEquals((await classify({ type: "image" }, opts)).category, "inquiry");
 });
