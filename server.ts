@@ -4,7 +4,16 @@ import { Store } from "./src/store.ts";
 
 const ALLOWED_ORIGIN = "*";
 const lineConfig = configFromEnv();
-lineConfig.store = await Store.open();
+try {
+  lineConfig.store = await Store.open();
+} catch (e) {
+  // KV がなくてもサーバー自体は動かす（仕分けとぽちこへの転送は続ける）
+  console.error(
+    "Deno KV を開けませんでした。担当者登録と1日1回の通知は止まっています。" +
+      "Deno Deploy のダッシュボードでアプリに KV データベースを接続してください。",
+    e,
+  );
+}
 
 // 1日1回、問い合わせのまとめを担当者のLINEに送る
 // デフォルトは毎日 9:00（日本時間）。DIGEST_CRON は UTC の cron 式（例: "0 0 * * *" = 日本時間 9:00）
