@@ -45,22 +45,39 @@ export async function sendChatNotification(url: string, text: string): Promise<v
   if (!res.ok) throw new Error(`notification failed: ${res.status} ${await res.text()}`);
 }
 
-/** スタッフのLINEへプッシュ通知（LINEの無料メッセージ数を消費する点に注意） */
-export async function sendLinePush(
+/** LINEへプッシュ送信（吹き出し最大5つ。1回の送信は1人につき1通としてカウントされる） */
+export async function sendLinePushMessages(
   accessToken: string,
   to: string,
-  text: string,
+  texts: string[],
 ): Promise<void> {
-  const res = await fetch("https://api.line.me/v2/bot/message/push", {
+  await callLine(accessToken, "push", { to, messages: toTextMessages(texts) });
+}
+
+/** 受け取ったメッセージへの返信（無料メッセージ数を消費しない） */
+export async function sendLineReply(
+  accessToken: string,
+  replyToken: string,
+  texts: string[],
+): Promise<void> {
+  await callLine(accessToken, "reply", { replyToken, messages: toTextMessages(texts) });
+}
+
+function toTextMessages(texts: string[]) {
+  return texts.slice(0, 5).map((text) => ({ type: "text", text: text.slice(0, 5000) }));
+}
+
+async function callLine(accessToken: string, kind: "push" | "reply", body: unknown): Promise<void> {
+  const res = await fetch(`https://api.line.me/v2/bot/message/${kind}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({ to, messages: [{ type: "text", text: text.slice(0, 5000) }] }),
-    signal: AbortSignal.timeout(5_000),
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8_000),
   });
-  if (!res.ok) throw new Error(`LINE push failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(`LINE ${kind} failed: ${res.status} ${await res.text()}`);
 }
 
 /** Googleスプレッドシート（Apps Script のウェブアプリ）などに全件を記録 */

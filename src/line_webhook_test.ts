@@ -2,6 +2,8 @@ import { assert, assertEquals } from "jsr:@std/assert@1";
 import { classify, parsePatterns } from "./classify.ts";
 import { computeSignature, verifySignature } from "./line_signature.ts";
 import { handleLineWebhook, type WebhookConfig } from "./line_webhook.ts";
+import { buildDigestMessages, sendDailyDigest } from "./digest.ts";
+import { Store } from "./store.ts";
 
 const SECRET = "test-secret";
 
@@ -67,6 +69,7 @@ Deno.test("webhook: forwards to pochico and notifies only inquiries", async () =
       pochicoWebhookUrl: "https://pochico.example/webhook",
       notifyWebhookUrl: "https://hooks.slack.com/services/x",
       adminUserIds: [],
+      store: null,
       classifier: { patterns: parsePatterns(undefined), anthropic: null },
     };
     const event = (id: string, text: string) => ({
@@ -111,4 +114,109 @@ Deno.test("webhook: forwards to pochico and notifies only inquiries", async () =
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+Deno.test("staff registration + daily digest", async () => {
+  const calls: { url: string; body: string }[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push({ url, body: String(init?.body ?? "") });
+    if (url.includes("/v2/bot/profile/")) {
+      return Response.json({ displayName: url.endsWith("Ustaff") ? "担当者A" : "お客様B" });
+    }
+    return new Response("{}");
+  }) as typeof fetch;
+
+  const store = await Store.open(":memory:");
+  try {
+    const config: WebhookConfig = {
+      channelSecret: SECRET,
+      channelAccessToken: "token",
+      adminUserIds: [],
+      staffRegisterCode: "rink123",
+      store,
+      classifier: { patterns: parsePatterns(undefined), anthropic: null },
+    };
+    const post = async (events: unknown[]) => {
+      const body = JSON.stringify({ events });
+      return await handleLineWebhook(
+        new Request("http://localhost/line/webhook", {
+          method: "POST",
+          headers: { "x-line-signature": await computeSignature(SECRET, body) },
+          body,
+        }),
+        config,
+      );
+    };
+    const msg = (id: string, userId: string, text: string) => ({
+      type: "message",
+      timestamp: 1_700_000_000_000 + Number(id),
+      replyToken: "rt" + id,
+      source: { type: "user", userId },
+      message: { id, type: "text", text },
+    });
+
+    // 合言葉が違えば登録されない
+    await post([msg("1", "Ustaff", "担当者登録 wrong")]);
+    assertEquals((await store.listStaff()).length, 0);
+
+    // 正しい合言葉で登録され、返信（無料）で知らせる
+    await post([msg("2", "Ustaff", "担当者登録　rink123")]);
+    const staff = await store.listStaff();
+    assertEquals(staff.map((s) => s.userId), ["Ustaff"]);
+    assert(calls.some((c) => c.url.endsWith("/message/reply") && c.body.includes("担当者A")));
+
+    // 予約メッセージは貯めず、問い合わせだけ貯める（担当者登録コマンドも貯めない）
+    await post([
+      msg("3", "Ucust", "[予約を希望]"),
+      msg("4", "Ucust", "山田花子です。紹介者は佐藤さんです"),
+      msg("5", "Ucust", "駐車場はありますか？"),
+    ]);
+    const pending = await store.listPending();
+    // msg1（合言葉違い）は普通の問い合わせとして貯まる
+    assertEquals(pending.map((p) => p.record.text), [
+      "担当者登録 wrong",
+      "山田花子です。紹介者は佐藤さんです",
+      "駐車場はありますか？",
+    ]);
+    // その場ではプッシュしない
+    assertEquals(calls.filter((c) => c.url.endsWith("/message/push")).length, 0);
+
+    // 1日1回のまとめ送信
+    const result = await sendDailyDigest(store, "token");
+    assertEquals(result, { inquiries: 3, recipients: 1, sent: 1 });
+    const pushes = calls.filter((c) => c.url.endsWith("/message/push"));
+    assertEquals(pushes.length, 1);
+    const pushBody = JSON.parse(pushes[0].body);
+    assertEquals(pushBody.to, "Ustaff");
+    assert(pushBody.messages[0].text.includes("問い合わせのまとめ（3件）"));
+    assert(pushBody.messages[0].text.includes("駐車場はありますか？"));
+    assertEquals((await store.listPending()).length, 0);
+
+    // 0件の日は送らない
+    assertEquals((await sendDailyDigest(store, "token")).sent, 0);
+
+    // 解除
+    await post([msg("6", "Ustaff", "担当者解除")]);
+    assertEquals((await store.listStaff()).length, 0);
+  } finally {
+    globalThis.fetch = realFetch;
+    store.close();
+  }
+});
+
+Deno.test("digest: splits into at most 5 bubbles", () => {
+  const records = Array.from({ length: 200 }, (_, i) => ({
+    timestamp: new Date(1_700_000_000_000 + i).toISOString(),
+    userId: "U",
+    displayName: "お客様" + i,
+    messageType: "text",
+    text: "あ".repeat(250),
+    classification: { category: "inquiry" as const, method: "ai" as const },
+  }));
+  const bubbles = buildDigestMessages(records);
+  assert(bubbles.length <= 5);
+  assert(bubbles.every((b) => b.length <= 5000));
+  assert(bubbles[bubbles.length - 1].includes("ほか"));
 });
