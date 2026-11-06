@@ -7,13 +7,13 @@
 import Anthropic from "npm:@anthropic-ai/sdk@^1.5.0";
 import { classify, type ClassifierOptions, type LineMessage, parsePatterns } from "./classify.ts";
 import { verifySignature } from "./line_signature.ts";
-import { formatInquiry, type MessageRecord, sendChatNotification, sendLineReply, sendLog } from "./notify.ts";
+import { formatInquiry, type MessageRecord, sendChatNotification, sendLinePushMessages, sendLineReply, sendLog } from "./notify.ts";
 import type { Store } from "./store.ts";
 
 export interface WebhookConfig {
   channelSecret: string;
   channelAccessToken?: string;
-  /** ぽちこの Webhook URL（ぽちこが Webhook を使っている場合に設定） */
+  /** ぽちこの Webhook URL。ぽちこが「拡張機能」として入っている場合は不要（設定しない） */
   pochicoWebhookUrl?: string;
   /** Slack / Discord の Incoming Webhook URL */
   notifyWebhookUrl?: string;
@@ -53,6 +53,8 @@ interface LineEvent {
   type: string;
   timestamp: number;
   replyToken?: string;
+  /** 拡張機能（ぽちこ）がチャットを操作中のときは "standby" */
+  mode?: "active" | "standby";
   source?: { type: string; userId?: string };
   message?: LineMessage & { id: string };
   deliveryContext?: { isRedelivery: boolean };
@@ -164,8 +166,13 @@ async function handleStaffCommand(
     return false;
   }
 
-  if (channelAccessToken && event.replyToken) {
-    await sendLineReply(channelAccessToken, event.replyToken, [reply]).catch((e) => console.error(e));
+  if (channelAccessToken) {
+    // ぽちこ（拡張機能）がチャットを操作中だと、このサーバーには返信用トークンが来ない（mode: "standby"）。
+    // その場合だけプッシュで知らせる（担当者登録のときの1通だけ）
+    const send = event.replyToken
+      ? sendLineReply(channelAccessToken, event.replyToken, [reply])
+      : sendLinePushMessages(channelAccessToken, userId, [reply]);
+    await send.catch((e) => console.error(e));
   }
   return true;
 }

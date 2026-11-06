@@ -197,6 +197,17 @@ Deno.test("staff registration + daily digest", async () => {
     // 0件の日は送らない
     assertEquals((await sendDailyDigest(store, "token")).sent, 0);
 
+    // ぽちこがチャット操作中（standby、返信トークンなし）でも、問い合わせは貯まり、登録はプッシュで知らせる
+    await store.addStaff({ userId: "Ustaff", displayName: "担当者A", registeredAt: "" });
+    await store.removeStaff("Ustaff");
+    const before = calls.length;
+    await post([{ ...msg("7", "Ustaff2", "担当者登録 rink123"), replyToken: undefined, mode: "standby" }]);
+    assert(calls.slice(before).some((c) => c.url.endsWith("/message/push") && JSON.parse(c.body).to === "Ustaff2"));
+    await store.removeStaff("Ustaff2");
+    await post([{ ...msg("8", "Ucust", "日程を変更したいです"), replyToken: undefined, mode: "standby" }]);
+    assertEquals((await store.listPending()).map((p) => p.record.text), ["日程を変更したいです"]);
+    await store.addStaff({ userId: "Ustaff", displayName: "担当者A", registeredAt: "" });
+
     // 解除
     await post([msg("6", "Ustaff", "担当者解除")]);
     assertEquals((await store.listStaff()).length, 0);
