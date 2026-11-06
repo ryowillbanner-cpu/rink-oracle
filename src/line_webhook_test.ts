@@ -24,11 +24,20 @@ Deno.test("classify: pattern / type / fallback", async () => {
     "ご指定いただいた時間は、既に満席となっております。別の時間帯をご指定ください。",
     "予約する",
     " 予約確認 ",
+    "[予約を希望]",
+    "[予約を確認]",
+    "『オラクルカード占い　　(福岡市内)』を選択",
+    "『オラクルカード占い　　(久留米)』を選択",
+    "11/16(月)",
+    "10:15",
+    "予約可能な日がありません",
   ]) {
     assertEquals((await classify({ type: "text", text: t }, opts)).category, "reservation", t);
   }
   // キーワードの後に文章があれば人が見るべき問い合わせ
   assertEquals((await classify({ type: "text", text: "予約したいのですが空きはありますか？" }, opts)).category, "inquiry");
+  assertEquals((await classify({ type: "text", text: "11/16(月)の10:15は空いていますか？" }, opts)).category, "inquiry");
+  assertEquals((await classify({ type: "text", text: "[予約を希望] ですが、時間を変えたいです" }, opts)).category, "inquiry");
   assertEquals((await classify({ type: "sticker" }, opts)).category, "other");
   assertEquals((await classify({ type: "image" }, opts)).category, "inquiry");
 });
