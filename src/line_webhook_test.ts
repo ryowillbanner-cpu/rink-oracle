@@ -31,6 +31,8 @@ Deno.test("classify: pattern / type / fallback", async () => {
     "11/16(月)",
     "10:15",
     "予約可能な日がありません",
+    "09:00",
+    "予約を確定する",
   ]) {
     assertEquals((await classify({ type: "text", text: t }, opts)).category, "reservation", t);
   }
@@ -38,6 +40,7 @@ Deno.test("classify: pattern / type / fallback", async () => {
   assertEquals((await classify({ type: "text", text: "予約したいのですが空きはありますか？" }, opts)).category, "inquiry");
   assertEquals((await classify({ type: "text", text: "11/16(月)の10:15は空いていますか？" }, opts)).category, "inquiry");
   assertEquals((await classify({ type: "text", text: "[予約を希望] ですが、時間を変えたいです" }, opts)).category, "inquiry");
+  assertEquals((await classify({ type: "text", text: "山田花子です。紹介者は佐藤さんです" }, opts)).category, "inquiry");
   assertEquals((await classify({ type: "sticker" }, opts)).category, "other");
   assertEquals((await classify({ type: "image" }, opts)).category, "inquiry");
 });
